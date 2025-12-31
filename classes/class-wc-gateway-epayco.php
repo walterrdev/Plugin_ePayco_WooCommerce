@@ -324,7 +324,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $currency = strtolower(get_woocommerce_currency());
             $testMode = $this->settings['epayco_testmode'] == "yes" ? true : false;
             $basedCountry = WC()->countries->get_base_country();
-            $external = $this->settings['epayco_type_checkout'];
+            $external = $this->settings['epayco_type_checkout']  == "true" ? 'standard' : 'onepage';
             $redirect_url = get_site_url() . "/";
             $redirect_url = add_query_arg('wc-api', get_class($this), $redirect_url);
             $redirect_url = add_query_arg('order_id', $order_id, $redirect_url);
@@ -360,7 +360,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $payload  = array(
                 "name"=>$descripcion,
                 "description"=>$descripcion,
-                "invoice"=>(string)$order->get_id().date("H:i:s"),
+                "invoice"=>(string)$order->get_id(),
                 "currency"=>$currency,
                 "amount"=>floatval($order->get_total()),
                 "taxBase"=>floatval($base_tax),
@@ -383,11 +383,15 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     "extra1" => (string)$order->get_id(),
                 ],
                 "extrasEpayco" => [
-                    "extra5" => "p19"
+                    "extra5" => "P19"
                 ],
                 "epaycoMethodsDisable" => [],
                 "method"=> "POST",
-                "checkout_version"=>"2"
+                "checkout_version"=>"2",
+                "autoClick" => false,
+                "noRedirectOnClose"=> true,
+                "forceResponse"=>false,//mostrar detalle de orden
+                "uniqueTransactionPerBill"=> false,
             );
             $path = "payment/session/create";
             $newToken['token'] =  $bearerToken;
@@ -397,31 +401,67 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     $sessionId =  $epayco_status_session['data']['sessionId'];
                     $payload['sessionId'] = $sessionId;
                 }
+            }else{
+                $messageError = $epayco_status_session['textResponse'];
+                $errorMessage = "";
+                if (isset($epayco_status_session['data']['errors'])) {
+                    $errors = $epayco_status_session['data']['errors'];
+                    if(is_array($errors)){
+                        foreach ($errors as $error) {
+                            $errorMessage = $error['errorMessage'] . "\n";
+                        }
+                    }else{
+                        $errorMessage = $errors. "\n";
+                    }
+                } elseif (isset($epayco_status_session['data']['error']['errores'])) {
+                    $errores = $epayco_status_session['data']['error']['errores'];
+                    foreach ($errores as $error) {
+                        $errorMessage = $error['errorMessage'] . "\n";
+                    }
+                }
+                //$processReturnFailMessage = $messageError . " " . $errorMessage;
+                $processReturnFailMessage =  $errorMessage;
+                 echo sprintf(
+                '<div style="
+                        display: flex;
+                        align-items: center;
+                        flex-direction: column;
+                    ">
+                    <div>
+                    <img style="width: 80px;" src="https://multimedia-epayco-preprod.s3.us-east-1.amazonaws.com/plugins-sdks/warning.png" alt="" />
+                    </div>
+                    <div 
+                    style="text-align: center;font-size: large;font-weight: 900;">
+                        <p>"%s"</p>
+                    </div>
+                </div>',
+                    $processReturnFailMessage
+                );
             }
-            //$payload['sessionId'] = '68f0eca016cc2d39e91c4a62';
             $checkout =  base64_encode(json_encode([
                 "sessionId"=>$payload['sessionId'],
-                "external"=>$external
+                "external"=>$external,
+                "test"=>$testMode
             ]));            
             echo sprintf(
                 '<script
-                    src="https://epayco-checkout-testing.s3.us-east-1.amazonaws.com/checkout.preprod.js">
+                    src="https://checkout.epayco.co/checkout-v2.js">
                 </script>
                 <script>
                     const params = JSON.parse(atob("%s"));
                     let {
                         sessionId,
-                        external
-                    } = params;
-                    
+                        external,
+                        test
+                    } = params; 
+                    const checkout = ePayco.checkout.configure({
+                        sessionId: sessionId,
+                        type: external,
+                        test: test
+                    });
                     var bntPagar = document.getElementById("btn_epayco");
                     var openNewChekout = function () {
-                        const handlerNew = ePayco.checkout.configure({
-                            sessionId: sessionId,
-                            external: external,
-                        });
-                        handlerNew.openNew();
-                        
+                        checkout.open();
                     }      
                     var openChekout = function () {
                         //bntPagar.style.pointerEvents = "none";
@@ -438,6 +478,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         ',
             $checkout
         );
+        wp_enqueue_script('epayco',  'https://checkout.epayco.co/checkout-v2.js', array(), '8.3.0', null);
         return '<form  method="post" id="appGateway">
 		        </form>';
         }
@@ -741,7 +782,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
 
         public function getRefPayco($refPayco)
         {
-            $url = 'https://eks-checkout-service.epayco.io/validation/v1/reference/' . $refPayco;
+            $url = 'https://secure.epayco.co/validation/v1/reference/' . $refPayco;
             $response = wp_remote_get($url);
             if (is_wp_error($response)) {
                 self::$logger->add($this->id, $response->get_error_message());
@@ -759,7 +800,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 $jsonNewData = @json_decode($bodySecondrequest, true);
                 $validationData = [];
                 if(isset($jsonNewData)){
-                    $responseDataDetail = wp_remote_get('https://eks-cms-backend-platforms-service.epayco.io/transaction/'. $jsonNewData['ePaycoID']);
+                    $responseDataDetail = wp_remote_get('https://cms.epayco.co/transaction/'. $jsonNewData['ePaycoID']);
                     if (is_wp_error($response)) {
                         self::$logger->add($this->id, $responseDataDetail->get_error_message());
                         return false;
@@ -868,7 +909,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         {
             $username = sanitize_text_field($validationData['epayco_publickey']);
             $password = sanitize_text_field($validationData['epayco_privatey']);
-            $response = wp_remote_post('https://eks-apify-service.epayco.io/login', array(
+            $response = wp_remote_post('https://apify.epayco.co/login', array(
                 'headers' => array(
                     'Authorization' => 'Basic ' . base64_encode($username . ':' . $password),
                 ),
@@ -1127,7 +1168,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
 
         public function epayco_realizar_llamada_api($path, $data, $headers, $method = 'POST')
         {
-            $url = 'https://eks-apify-service.epayco.io/' . $path;
+            $url = 'https://apify.epayco.co/' . $path;
 
             $response = wp_remote_post($url, [
                 'headers' => $headers,
