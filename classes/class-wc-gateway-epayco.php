@@ -444,7 +444,10 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 "test"=>$testMode
             ]));            
             echo sprintf(
-                '<script>
+                '<script
+                    src="https://epayco-checkout-testing.s3.amazonaws.com/checkout.preprod-v2.js">
+                </script>
+                <script>
                     const params = JSON.parse(atob("%s"));
                     let {
                         sessionId,
@@ -652,17 +655,44 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     'refPayco' => $x_ref_payco
                 ];
                 $paymentsIdMetadata = $this->getPaymentsIdMeta($order);
-                if (empty($paymentsIdMetadata)) {
-                    $this->setPaymentsIdData($order, implode(', ', $epaycoOrder));
+                // Prevent duplicate processing by verifying if this reference has already been processed
+                if (!empty($paymentsIdMetadata)) {
+                    // Check if this reference has already been processed
+                    $existingPayments = array_map('trim', explode(',', $paymentsIdMetadata));
+                    if (in_array($x_ref_payco, $existingPayments)) {
+                        // The transaction has already been processed, send response and exit
+                        self::$logger->add($this->id, "Duplicate processing attempt for order {$order_id} with reference {$x_ref_payco}");
+                        if (isset($_REQUEST['confirmation'])) {
+                            echo $x_cod_transaction_state;
+                            exit();
+                        } else {
+                            if ($this->get_option('epayco_url_response') == 0) {
+                                $redirect_url = $order->get_checkout_order_received_url();
+                            } else {
+                                global $woocommerce;
+                                $woocommerce->cart->empty_cart();
+                                $redirect_url = get_permalink($this->get_option('epayco_url_response'));
+                                $redirect_url = add_query_arg(['ref_payco' => $ref_payco], $redirect_url);
+                            }
+                        }
+                        wp_redirect($redirect_url);
+                        exit();
+                    }
                 }
-                foreach ($epaycoOrder as $paymentId) {
-                    $paymentDetailMetadata = $order->get_meta($paymentId);
-                    if (empty($paymentDetailMetadata)) {
-                        $order->update_meta_data(self::PAYMENTS_IDS, $paymentId);
+                
+                // Register this payment reference immediately to prevent duplicates (race condition prevention)
+                if (empty($paymentsIdMetadata)) {
+                    $this->setPaymentsIdData($order, $x_ref_payco);
+                } else {
+                    $existingPayments = array_map('trim', explode(',', $paymentsIdMetadata));
+                    if (!in_array($x_ref_payco, $existingPayments)) {
+                        $existingPayments[] = $x_ref_payco;
+                        $paymentsIdMetadata = implode(', ', $existingPayments);
+                        $order->update_meta_data(self::PAYMENTS_IDS, $paymentsIdMetadata);
                         $order->save();
                     }
                 }
-                // Validamos la firma
+                // Validate the signature
                 if ($order_id != "" && $x_ref_payco != "") {
                     $authSignature = $this->authSignature($x_ref_payco, $x_transaction_id, $x_amount, $x_currency_code);
                 }
@@ -691,25 +721,31 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 } else {
                     $validation = false;
                 }
-                if ($authSignature == $x_signature && $validation) {
-                    Epayco_Transaction_Handler::handle_transaction($order, [
-                        'x_cod_transaction_state' => $x_cod_transaction_state,
-                        'x_ref_payco'             => $x_ref_payco,
-                        'x_fecha_transaccion'     => $x_fecha_transaccion,
-                        'x_franchise'             => $x_franchise,
-                        'x_approval_code'         => $x_approval_code,
-                        'is_confirmation'         => $isConfirmation,
-                    ], [
-                        'test_mode'               => $isTestMode,
-                        'end_order_state'         => $this->settings['epayco_endorder_state'],
-                        'cancel_order_state'      => $this->settings['epayco_cancelled_endorder_state'],
-                        'reduce_stock_pending'    => $this->get_option('epayco_reduce_stock_pending'),
-                    ]);
+                  if ($authSignature == $x_signature && $validation) {
+                    // Additional verification: prevent processing if the order status is already final
+                    if (!in_array($current_state, ['processing', 'completed', 'processing_test', 'completed_test','epayco-processing', 'epayco-completed','epayco_processing', 'epayco_completed', 'refunded'])) {
+                        Epayco_Transaction_Handler::handle_transaction($order, [
+                            'x_cod_transaction_state' => $x_cod_transaction_state,
+                            'x_ref_payco'             => $x_ref_payco,
+                            'x_fecha_transaccion'     => $x_fecha_transaccion,
+                            'x_franchise'             => $x_franchise,
+                            'x_approval_code'         => $x_approval_code,
+                            'is_confirmation'         => $isConfirmation,
+                        ], [
+                            'test_mode'               => $isTestMode,
+                            'end_order_state'         => $this->settings['epayco_endorder_state'],
+                            'cancel_order_state'      => $this->settings['epayco_cancelled_endorder_state'],
+                            'reduce_stock_pending'    => $this->get_option('epayco_reduce_stock_pending'),
+                        ]);
+                    } else {
+                        // The order already has a final status, only log this attempt
+                        self::$logger->add($this->id, "Attempt to process in final status for order {$order_id}, current status: {$current_state}");
+                    }
 
 
-                    //validar si la transaccion esta pendiente y pasa a rechazada y ya habia descontado el stock
+                    // Validate if the transaction is pending and becomes rejected and stock had already been discounted
                     if (($current_state == 'on-hold' || $current_state == 'pending') && ((int)$x_cod_transaction_state == 2 || (int)$x_cod_transaction_state == 4) && EpaycoOrder::ifStockDiscount($order_id)) {
-                        //si no se restauro el stock restaurarlo inmediatamente
+                        // If stock was not restored, restore it immediately
                         // Epayco_Transaction_Handler::restore_stock($order_id);
                     };
                 } else {
@@ -721,7 +757,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                         $current_state == "completed"
                     ) {
                     } else {
-                        $message = 'Firma no valida';
+                        $message = 'Invalid signature';
                         $orderStatus = 'epayco-failed';
                         if ($x_cod_transaction_state != 1 && !empty($x_cod_transaction_state)) {
                             if (

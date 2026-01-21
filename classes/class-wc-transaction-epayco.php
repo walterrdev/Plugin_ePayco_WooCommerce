@@ -9,28 +9,36 @@ class Epayco_Transaction_Handler {
         $current_state = $order->get_status();
         $modo = $settings['test_mode'] === "true" ? "pruebas" : "Producción";
 
+         // Check if the transaction already has metadata (prevent double processing)
+        $existingRefPayco = $order->get_meta('refPayco');
+        if (!empty($existingRefPayco) && $existingRefPayco === $data['x_ref_payco']) {
+            // Transaction already processed, return without making changes
+            return;
+        }
+
+
         self::save_epayco_metadata($order, $modo, $data);
 
         $estado_final_exitoso = self::get_success_status($settings);
         $estado_cancelado = self::get_cancel_status($settings);
 
         switch ($data['x_cod_transaction_state']) {
-            case 1: // Aprobada
+            case 1: // Approved
                 self::handle_approved($order, $order_id, $current_state, $settings, $estado_final_exitoso,$data['x_franchise']);
                 echo "1";
                 break;
 
-            case 2: case 4: case 10: case 11: // Cancelada, fallida o rechazada
+            case 2: case 4: case 10: case 11: // Cancelled, failed or rejected
             self::handle_failed($order, $current_state, $estado_cancelado, $data['is_confirmation'],$settings,$data['x_franchise']);
             echo "2";
             break;
 
-            case 3: case 7: // Pendiente
+            case 3: case 7: // Pending
             self::handle_pending($order, $order_id, $current_state, $settings,$data['x_franchise']);
             echo "3";
             break;
 
-            case 6: // Reversado
+            case 6: // Reversed
                 self::handle_reversed($order);
                 echo "6";
                 break;
@@ -173,14 +181,14 @@ class Epayco_Transaction_Handler {
 
     private static function handle_reversed($order) {
         $order->update_status('refunded');
-        $order->add_order_note('Pago Reversado');
+        $order->add_order_note('Payment Reversed');
         self::restore_stock($order->get_id());
     }
 
     private static function handle_default($order, $current_state) {
         if (!in_array($current_state, ['processing', 'completed'])) {
             $order->update_status('epayco-failed');
-            $order->add_order_note('Pago fallido o abandonado');
+            $order->add_order_note('Payment failed or abandoned');
             self::restore_stock($order->get_id());
         }
     }
