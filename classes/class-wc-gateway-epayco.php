@@ -351,6 +351,8 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $current_state = $order->get_status();
             if ($current_state != $orderStatus) {
                 $order->update_status($orderStatus);
+                $order->add_order_note(__('Reintento de pago iniciado - Formulario de ePayco generado', 'woo-epayco-gateway'));
+                $order->save();
                 //$this->restore_order_stock($order->get_id(),"decrease");
             }
 
@@ -360,7 +362,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $payload  = array(
                 "name"=>$descripcion,
                 "description"=>$descripcion,
-                "invoice"=>(string)$order->get_id(),
+                "invoice"=>(string)$order->get_id() . "tes1t555",
                 "currency"=>$currency,
                 "amount"=>floatval($order->get_total()),
                 "taxBase"=>floatval($base_tax),
@@ -396,13 +398,13 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $path = "payment/session/create";
             $newToken['token'] =  $bearerToken;
             $epayco_status_session = $this->getEpaycoSessionId($path,$payload, $newToken);
-            if ($epayco_status_session['success']) {
+            if (is_array($epayco_status_session) && isset($epayco_status_session['success']) && $epayco_status_session['success']) {
                 if (isset($epayco_status_session['data']) && is_array($epayco_status_session['data'])) {
                     $sessionId =  $epayco_status_session['data']['sessionId'];
                     $payload['sessionId'] = $sessionId;
                 }
             }else{
-                $messageError = $epayco_status_session['textResponse'];
+                $messageError = (is_array($epayco_status_session) && isset($epayco_status_session['textResponse'])) ? $epayco_status_session['textResponse'] : '';
                 $errorMessage = "";
                 if (isset($epayco_status_session['data']['errors'])) {
                     $errors = $epayco_status_session['data']['errors'];
@@ -655,28 +657,38 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     'refPayco' => $x_ref_payco
                 ];
                 $paymentsIdMetadata = $this->getPaymentsIdMeta($order);
+                $current_state = $order->get_status();
+                
                 // Prevent duplicate processing by verifying if this reference has already been processed
+                // BUT allow processing if the transaction state changed (e.g., from failed to approved on retry)
                 if (!empty($paymentsIdMetadata)) {
                     // Check if this reference has already been processed
                     $existingPayments = array_map('trim', explode(',', $paymentsIdMetadata));
                     if (in_array($x_ref_payco, $existingPayments)) {
-                        // The transaction has already been processed, send response and exit
-                        self::$logger->add($this->id, "Duplicate processing attempt for order {$order_id} with reference {$x_ref_payco}");
-                        if (isset($_REQUEST['confirmation'])) {
-                            echo $x_cod_transaction_state;
-                            exit();
-                        } else {
-                            if ($this->get_option('epayco_url_response') == 0) {
-                                $redirect_url = $order->get_checkout_order_received_url();
+                        // Check if this is a status change (retry payment)
+                        // Allow processing if: order is in failed/cancelled/on-hold state AND payment is now approved
+                        $isRetryWithStatusChange = in_array($current_state, ['on-hold', 'epayco-cancelled', 'epayco-failed', 'epayco_cancelled', 'epayco_failed', 'failed', 'cancelled']) 
+                                                  && (int)$x_cod_transaction_state === 1;
+                        
+                        if (!$isRetryWithStatusChange) {
+                            // The transaction has already been processed, send response and exit
+                            self::$logger->add($this->id, "Duplicate processing attempt for order {$order_id} with reference {$x_ref_payco}");
+                            if (isset($_REQUEST['confirmation'])) {
+                                echo $x_cod_transaction_state;
+                                exit();
                             } else {
-                                global $woocommerce;
-                                $woocommerce->cart->empty_cart();
-                                $redirect_url = get_permalink($this->get_option('epayco_url_response'));
-                                $redirect_url = add_query_arg(['ref_payco' => $ref_payco], $redirect_url);
+                                if ($this->get_option('epayco_url_response') == 0) {
+                                    $redirect_url = $order->get_checkout_order_received_url();
+                                } else {
+                                    global $woocommerce;
+                                    $woocommerce->cart->empty_cart();
+                                    $redirect_url = get_permalink($this->get_option('epayco_url_response'));
+                                    $redirect_url = add_query_arg(['ref_payco' => $ref_payco], $redirect_url);
+                                }
                             }
+                            wp_redirect($redirect_url);
+                            exit();
                         }
-                        wp_redirect($redirect_url);
-                        exit();
                     }
                 }
                 
@@ -698,7 +710,6 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 }
                 $message = '';
                 $messageClass = '';
-                $current_state = $order->get_status();
                 $isTestTransaction = $x_test_request == 'TRUE' ? "yes" : "no";
                 update_option('epayco_order_status', $isTestTransaction);
                 $isTestMode = get_option('epayco_order_status') == "yes" ? "true" : "false";
