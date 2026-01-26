@@ -9,6 +9,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Changed
 
+- **26 de enero de 2026** - Evitar pagos duplicados, reducir stock de los productos cuando se realiza un reintento de pago y este es exitoso
+  - Implementado sistema de validación de pagos duplicados
+  - Mejorada la gestión de stock durante reintentos de pago exitosos
+  - Sincronización optimizada de estado de órdenes tras reintento exitoso
+
 - **23 de octubre de 2025** - Actualización para versión 2 del checkout de ePayco
   - Actualizado el payload de configuración del checkout para incluir `checkout_version: "2"`
   - Implementada integración con el nuevo endpoint `payment/session/create` para crear sesiones de pago
