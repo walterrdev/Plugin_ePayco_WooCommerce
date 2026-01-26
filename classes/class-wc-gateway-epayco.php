@@ -659,19 +659,17 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 $paymentsIdMetadata = $this->getPaymentsIdMeta($order);
                 $current_state = $order->get_status();
                 
-                // Prevent duplicate processing by verifying if this reference has already been processed
-                // BUT allow processing if the transaction state changed (e.g., from failed to approved on retry)
+               
                 if (!empty($paymentsIdMetadata)) {
-                    // Check if this reference has already been processed
+                    
                     $existingPayments = array_map('trim', explode(',', $paymentsIdMetadata));
                     if (in_array($x_ref_payco, $existingPayments)) {
-                        // Check if this is a status change (retry payment)
-                        // Allow processing if: order is in failed/cancelled/on-hold state AND payment is now approved
+                       
                         $isRetryWithStatusChange = in_array($current_state, ['on-hold', 'epayco-cancelled', 'epayco-failed', 'epayco_cancelled', 'epayco_failed', 'failed', 'cancelled']) 
                                                   && (int)$x_cod_transaction_state === 1;
                         
                         if (!$isRetryWithStatusChange) {
-                            // The transaction has already been processed, send response and exit
+                            
                             self::$logger->add($this->id, "Duplicate processing attempt for order {$order_id} with reference {$x_ref_payco}");
                             if (isset($_REQUEST['confirmation'])) {
                                 echo $x_cod_transaction_state;
@@ -692,7 +690,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     }
                 }
                 
-                // Register this payment reference immediately to prevent duplicates (race condition prevention)
+                
                 if (empty($paymentsIdMetadata)) {
                     $this->setPaymentsIdData($order, $x_ref_payco);
                 } else {
@@ -753,11 +751,8 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                         self::$logger->add($this->id, "Attempt to process in final status for order {$order_id}, current status: {$current_state}");
                     }
 
-
-                    // Validate if the transaction is pending and becomes rejected and stock had already been discounted
                     if (($current_state == 'on-hold' || $current_state == 'pending') && ((int)$x_cod_transaction_state == 2 || (int)$x_cod_transaction_state == 4) && EpaycoOrder::ifStockDiscount($order_id)) {
-                        // If stock was not restored, restore it immediately
-                        // Epayco_Transaction_Handler::restore_stock($order_id);
+                       
                     };
                 } else {
 
