@@ -351,7 +351,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $current_state = $order->get_status();
             if ($current_state != $orderStatus) {
                 $order->update_status($orderStatus);
-                $order->add_order_note(__('Reintento de pago iniciado - Formulario de ePayco generado', 'woo-epayco-gateway'));
+                // $order->add_order_note(__('Reintento de pago iniciado - Formulario de ePayco generado', 'woo-epayco-gateway'));
                 $order->save();
                 //$this->restore_order_stock($order->get_id(),"decrease");
             }

@@ -9,14 +9,11 @@ class Epayco_Transaction_Handler {
         $current_state = $order->get_status();
         $modo = $settings['test_mode'] === "true" ? "pruebas" : "Producción";
 
-         // Check if the transaction already has metadata (prevent double processing)
         $existingRefPayco = $order->get_meta('refPayco');
         if (!empty($existingRefPayco) && $existingRefPayco === $data['x_ref_payco']) {
-            // Transaction already processed, return without making changes
+          
             return;
         }
-
-
         self::save_epayco_metadata($order, $modo, $data);
 
         $estado_final_exitoso = self::get_success_status($settings);
@@ -83,38 +80,36 @@ class Epayco_Transaction_Handler {
         try{
             $logger = new WC_Logger();
             
-            // Handle pending status - change to on-hold and wait for confirmation
+          
             if (in_array($current_state, ['pending'])) {
                 $order->update_status('on-hold');
-                $order->add_order_note(__('Pago recibido - Esperando confirmación', 'woo-epayco-gateway'));
+                // $order->add_order_note(__('Pago recibido - Esperando confirmación', 'woo-epayco-gateway'));
                 $order->save();
                 if ($settings['reduce_stock_pending'] !== "yes"){
-                    // Mark stock as pending to be discounted later when approved
+                   
                     if (!EpaycoOrder::ifStockDiscount($order_id)) {
                         EpaycoOrder::updateStockDiscount($order_id, 1);
-                        // Don't decrease stock here - let the final approval handler do it
+                        
                     }
                 }
-                return; // Exit early for pending status
+                return; 
             }
 
-            // For all other states (on-hold, cancelled, failed, etc.) - process as approved
-            // Only update status and stock if the order is not already in a final state
+         
             if (!in_array($current_state, ['processing', 'completed', 'processing_test', 'completed_test','epayco-processing', 'epayco-completed','epayco_processing', 'epayco_completed'])) {
                 
-                // Update order status
+          
                 $order->payment_complete($order->get_meta('refPayco'));
                 $order->update_status($estado_final_exitoso);
-                $order->add_order_note(__('Pago aprobado - Pedido en procesamiento', 'woo-epayco-gateway'));
+                // $order->add_order_note(__('Pago aprobado - Pedido en procesamiento', 'woo-epayco-gateway'));
                 $order->save();
             }
             
-            // ALWAYS decrease stock if it hasn't been discounted yet, regardless of previous state
-            // This ensures stock is reduced on approval, retry, or any state change to approved
+        
             if (!EpaycoOrder::ifStockDiscount($order_id)) {
                 EpaycoOrder::updateStockDiscount($order_id, 1);
                 self::restore_stock($order_id, 'decrease');
-                $order->add_order_note(__('Stock descontado - Pago aprobado', 'woo-epayco-gateway'));
+                // $order->add_order_note(__('Stock descontado - Pago aprobado', 'woo-epayco-gateway'));
                 $order->save();
             }
             
