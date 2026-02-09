@@ -360,8 +360,8 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             $tokenResponse = $this->epyacoBerarToken();
             $bearerToken = ($tokenResponse && isset($tokenResponse['token'])) ? $tokenResponse['token'] : '';
             $payload  = array(
-                "name"=>$descripcion,
-                "description"=>$descripcion,
+                "name"=>substr($descripcion, 0, 30),
+                "description"=>substr($descripcion, 0, 240),
                 "invoice"=>(string)$order->get_id(),
                 "currency"=>$currency,
                 "amount"=>floatval($order->get_total()),
@@ -480,7 +480,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         ',
             $checkout
         );
-        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.3.0', null);
+        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.4.2', null);
         return '<form  method="post" id="appGateway">
 		        </form>';
         }
