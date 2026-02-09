@@ -379,7 +379,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     "mobilePhone" => $phone_billing
                 ],
                 "autoclick"=> true,
-                "ip"=>$myIp,
+                //"ip"=>$myIp,
                 "test"=>$testMode,
                  "extras" => [
                     "extra1" => (string)$order->get_id(),
@@ -480,7 +480,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         ',
             $checkout
         );
-        wp_enqueue_script('epayco','https://epayco-checkout-testing.s3.amazonaws.com/checkout.preprod-v2.js', array(), '8.3.0', null);
+        wp_enqueue_script('epayco','https://epayco-checkout-testing.s3.amazonaws.com/checkout.preprod-v2.js', array(), '8.4.3', null);
         return '<form  method="post" id="appGateway">
 		        </form>';
         }
