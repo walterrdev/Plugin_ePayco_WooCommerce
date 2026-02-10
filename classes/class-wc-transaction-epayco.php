@@ -12,7 +12,7 @@ class Epayco_Transaction_Handler {
         $existingRefPayco = $order->get_meta('refPayco');
         if (!empty($existingRefPayco) && $existingRefPayco === $data['x_ref_payco']) {
           
-            return;
+            //return;
         }
         self::save_epayco_metadata($order, $modo, $data);
 
