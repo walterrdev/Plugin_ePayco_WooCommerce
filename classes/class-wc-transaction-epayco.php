@@ -7,7 +7,7 @@ class Epayco_Transaction_Handler {
     public static function handle_transaction($order, $data, $settings) {
         $order_id = $order->get_id();
         $current_state = $order->get_status();
-        $modo = $settings['test_mode'] === "true" ? "pruebas" : "Producción";
+        $modo = $settings['test_mode'] === "true" ? "pruebas" : "Producci贸n";
 
         $existingRefPayco = $order->get_meta('refPayco');
         if (!empty($existingRefPayco) && $existingRefPayco === $data['x_ref_payco']) {
@@ -83,7 +83,7 @@ class Epayco_Transaction_Handler {
           
             if (in_array($current_state, ['pending'])) {
                 $order->update_status('on-hold');
-                // $order->add_order_note(__('Pago recibido - Esperando confirmación', 'woo-epayco-gateway'));
+                // $order->add_order_note(__('Pago recibido - Esperando confirmaci贸n', 'woo-epayco-gateway'));
                 $order->save();
                 if ($settings['reduce_stock_pending'] !== "yes"){
                    
@@ -108,7 +108,7 @@ class Epayco_Transaction_Handler {
         
             if (!EpaycoOrder::ifStockDiscount($order_id)) {
                 EpaycoOrder::updateStockDiscount($order_id, 1);
-                self::restore_stock($order_id, 'decrease');
+                //self::restore_stock($order_id, 'decrease');
                 // $order->add_order_note(__('Stock descontado - Pago aprobado', 'woo-epayco-gateway'));
                 $order->save();
             }
