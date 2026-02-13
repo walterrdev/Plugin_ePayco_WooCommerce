@@ -480,7 +480,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         ',
             $checkout
         );
-        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.4.3', null);
+        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.4.4', null);
         return '<form  method="post" id="appGateway">
 		        </form>';
         }
