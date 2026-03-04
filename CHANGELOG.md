@@ -9,6 +9,8 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Changed
 
+- **12 de febrero de 2026** - Se elimina valor de ip en creación de ssesion de checkout
+
 - **26 de enero de 2026** - Evitar pagos duplicados, reducir stock de los productos cuando se realiza un reintento de pago y este es exitoso
   - Implementado sistema de validación de pagos duplicados
   - Mejorada la gestión de stock durante reintentos de pago exitosos
