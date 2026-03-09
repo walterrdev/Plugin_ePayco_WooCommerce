@@ -157,8 +157,8 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 <div id="path_upload" hidden>
                     <?php esc_html_e($logo_url, 'text_domain'); ?>
                 </div>
-                <div id="path_images" hidden>
-                    <?php echo EPAYCO_PLUGIN_URL . 'assets/images' ?>
+                <div id="path_plugin" hidden>
+                    <?php echo EPAYCO_PLUGIN_URL . 'assets/images/' ?>
                 </div>
                 <div id="path_validate" hidden>
                     <?php esc_html_e($validation_url, 'text_domain'); ?>
@@ -188,7 +188,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                             <form method="post" action="#">
                                 <label for="woocommerce_epayco_enabled">
                                 </label>
-                                <input type="button" class="button-primary woocommerce-save-button validar" value="Validar">
+                                <input type="button" id="validar" class="button-primary woocommerce-save-button validar" value="Validar">
                                 <p class="description">
                                     <?php esc_html_e('Validación de llaves PUBLIC_KEY y PRIVATE_KEY', 'woo-epayco-gateway'); ?>
                                 </p>
@@ -198,13 +198,14 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                             <div id="myModal" class="modal">
                                 <!-- Modal content -->
                                 <div class="modal-content">
-                                    <span class="close">&times;</span>
+                                    <span class="closeEpaycoModal">&times;</span>
                                     <center>
-                                        <img src="<?php echo EPAYCO_PLUGIN_URL . '/assets/images/logo_warning.png' ?>">
+                                        <img id="epaycoModalImg" src="<?php echo EPAYCO_PLUGIN_URL . '/assets/images/logo_warning.png' ?>">
                                     </center>
-                                    <p><strong><?php esc_html_e('Llaves de comercio inválidas', 'woo-epayco-gateway'); ?></strong> </p>
-                                    <p><?php esc_html_e('Las llaves Public Key, Private Key insertadas', 'woo-epayco-gateway'); ?><br><?php esc_html_e('del comercio son inválidas.', 'woo-epayco-gateway'); ?><br><?php esc_html_e('Consúltelas en el apartado de integraciones', 'woo-epayco-gateway'); ?> <br><?php esc_html_e('Llaves API en su Dashboard ePayco.', 'woo-epayco-gateway'); ?>,</p>
+                                    <p id="epaycoCredentialTittle"><strong><?php esc_html_e('Llaves de comercio inválidas', 'woo-epayco-gateway'); ?></strong> </p>
+                                    <p id="epaycoCredentialDescription"><?php esc_html_e('Las llaves Public Key, Private Key insertadas', 'woo-epayco-gateway'); ?><br><?php esc_html_e('del comercio son inválidas.', 'woo-epayco-gateway'); ?><br><?php esc_html_e('Consúltelas en el apartado de integraciones', 'woo-epayco-gateway'); ?> <br><?php esc_html_e('Llaves API en su Dashboard ePayco.', 'woo-epayco-gateway'); ?>,</p>
                                 </div>
+                                <span class="loader"></span>
                             </div>
 
                         </td>
@@ -356,7 +357,6 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 //$this->restore_order_stock($order->get_id(),"decrease");
             }
 
-
             $tokenResponse = $this->epyacoBerarToken();
             $bearerToken = ($tokenResponse && isset($tokenResponse['token'])) ? $tokenResponse['token'] : '';
             $payload  = array(
@@ -397,7 +397,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             );
             $path = "payment/session/create";
             $newToken['token'] =  $bearerToken;
-            $epayco_status_session = $this->getEpaycoSessionId($path,$payload, $newToken);
+            $epayco_status_session = $this->getEpaycoSessionId($path,$payload, $newToken);     
             if (is_array($epayco_status_session) && isset($epayco_status_session['success']) && $epayco_status_session['success']) {
                 if (isset($epayco_status_session['data']) && is_array($epayco_status_session['data'])) {
                     $sessionId =  $epayco_status_session['data']['sessionId'];
@@ -480,7 +480,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
         ',
             $checkout
         );
-        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.4.4', null);
+        wp_enqueue_script('epayco','https://checkout.epayco.co/checkout-v2.js', array(), '8.4.5', null);
         return '<form  method="post" id="appGateway">
 		        </form>';
         }
@@ -491,8 +491,9 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
          *
          * @return mixed
          */
-        public function getPaymentsIdMeta(WC_Order $order, bool $single = true)
+        public function getPaymentsIdMeta(WC_Order $order, bool $single = true, $key = null)
         {
+            if($key) return $order->get_meta($key, $single);
             return $order->get_meta(self::PAYMENTS_IDS, $single);
         }
 
@@ -502,12 +503,16 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
          *
          * @return void
          */
-        public function setPaymentsIdData(WC_Order $order, $value): void
+        public function setPaymentsIdData(WC_Order $order, $value, $key = null): void
         {
             try {
                 $logger = new WC_Logger();
                 if ( $order instanceof WC_Order ) {
-                    $order->add_meta_data( self::PAYMENTS_IDS, $value );
+                    if($key){
+                        $order->update_meta_data( $key, $value );
+                    }else{
+                        $order->add_meta_data( self::PAYMENTS_IDS, $value );
+                    }
                     $order->save();
                 }
             } catch (\Exception $ex) {
@@ -606,6 +611,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 $order_id = $order_id_rpl[0];
                 $order = new WC_Order($order_id);
                 $isConfirmation = sanitize_text_field($_GET['confirmation']) == 1;
+                
                 if ($isConfirmation) {
                     $x_signature = sanitize_text_field($_REQUEST['x_signature']);
                     $x_cod_transaction_state = sanitize_text_field($_REQUEST['x_cod_transaction_state']);
@@ -653,41 +659,19 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                     $x_franchise = trim($validationData['x_franchise']);
                     $x_fecha_transaccion = trim($validationData['x_fecha_transaccion']);
                 }
+                
                 $epaycoOrder = [
                     'refPayco' => $x_ref_payco
                 ];
                 $paymentsIdMetadata = $this->getPaymentsIdMeta($order);
+                $paymentsHistoryIdMetadata = $this->getPaymentsIdMeta($order, true, 'epayco_meta_data_history');
                 $current_state = $order->get_status();
                 
-               
-                if (!empty($paymentsIdMetadata)) {
-                    
-                    $existingPayments = array_map('trim', explode(',', $paymentsIdMetadata));
-                    if (in_array($x_ref_payco, $existingPayments)) {
-                       
-                        $isRetryWithStatusChange = in_array($current_state, ['on-hold', 'epayco-cancelled', 'epayco-failed', 'epayco_cancelled', 'epayco_failed', 'failed', 'cancelled']) 
-                                                  && (int)$x_cod_transaction_state === 1;
-                        
-                        if (!$isRetryWithStatusChange) {
-                            
-                            self::$logger->add($this->id, "Duplicate processing attempt for order {$order_id} with reference {$x_ref_payco}");
-                            if (isset($_REQUEST['confirmation'])) {
-                                echo $x_cod_transaction_state;
-                                exit();
-                            } else {
-                                if ($this->get_option('epayco_url_response') == 0) {
-                                    $redirect_url = $order->get_checkout_order_received_url();
-                                } else {
-                                    global $woocommerce;
-                                    $woocommerce->cart->empty_cart();
-                                    $redirect_url = get_permalink($this->get_option('epayco_url_response'));
-                                    $redirect_url = add_query_arg(['ref_payco' => $ref_payco], $redirect_url);
-                                }
-                            }
-                            wp_redirect($redirect_url);
-                            exit();
-                        }
-                    }
+                if (empty($paymentsHistoryIdMetadata)) {
+                    $this->setPaymentsIdData($order, $x_cod_transaction_state, 'epayco_meta_data_history');
+                }else{
+                    $order->update_meta_data('epayco_meta_data_history', $x_cod_transaction_state);
+                    $order->save();
                 }
                 
                 
@@ -730,6 +714,7 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
                 } else {
                     $validation = false;
                 }
+  
                   if ($authSignature == $x_signature && $validation) {
                     // Additional verification: prevent processing if the order status is already final
                     if (!in_array($current_state, ['processing', 'completed', 'processing_test', 'completed_test','epayco-processing', 'epayco-completed','epayco_processing', 'epayco_completed', 'refunded'])) {
@@ -955,8 +940,25 @@ class WC_Gateway_Epayco extends WC_Payment_Gateway
             ));
             $data = json_decode(wp_remote_retrieve_body($response));
             if ($data->token) {
-                echo "success";
-                exit();
+                $response = wp_remote_get("https://secure.payco.co/restpagos/validarllaves?public_key=" . trim($username));
+
+                if (is_wp_error($response)) {
+                    error_log('ePayco validation: ' . $response->get_error_message());
+                    if (class_exists('WC_Logger')) {
+                        $logger = wc_get_logger();
+                        $logger->info("checkout_error" . $response->get_error_message());
+                    }
+                    return wp_send_json("{success:false}");
+                }
+
+                $body = wp_remote_retrieve_body($response);
+                return wp_send_json($body);
+            } else {
+                if (class_exists('WC_Logger')) {
+                    $logger = wc_get_logger();
+                    $logger->info("checkout_error" . json_encode($data));
+                }
+                return wp_send_json("{success:false}");
             }
         }
 

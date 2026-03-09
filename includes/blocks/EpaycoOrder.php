@@ -58,12 +58,13 @@ class EpaycoOrder{
     /**
      * Actualizar que ya se le descont贸 el stock a una orden
      * @param int $orderId
+     * @param int $value
      */
-    public static function updateStockDiscount($orderId)
+    public static function updateStockDiscount($orderId, $value = 1)
     {
         global $wpdb;
         $table_name = $wpdb->prefix . "epayco_order";
-        $result = $wpdb->update( $table_name, array('order_stock_discount'=>1), array('order_id'=>(int)$orderId) );
+        $result = $wpdb->update( $table_name, array('order_stock_discount'=>$value), array('order_id'=>(int)$orderId) );
         return (int)$result == 1;
     }
 
